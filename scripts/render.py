@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import importlib.util
 import json
 import os
 import sys
@@ -148,7 +149,8 @@ def load_renderer(h3: str, control: str, fewstep: str, device: str, causal: bool
         "checkpoint_path": str(Path(h3).resolve()),
         "transformer_subfolder": "transformer_ref",
         "torch_dtype": "bfloat16",
-        "attention_backend": "flash",
+        # No flash-attn build exists for every GPU (none for the GB300): PyTorch attention then.
+        "attention_backend": "flash" if importlib.util.find_spec("flash_attn") else "native",
         "adapter": {"rank": RANK, "alpha": ALPHA, "dropout": 0.0},
     }
     modules = load_transformer(model_cfg, device=torch.device(device))

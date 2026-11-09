@@ -459,9 +459,9 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
         def segment_attention(q, k, v):
             # Each segment contains exactly its visible keys. Flash
             # attention needs no token-level mask or dense score tensor.
-            from flash_attn import flash_attn_func
+            from .omni_causal import select_attn_func
 
-            return flash_attn_func(
+            return select_attn_func("cuda")(
                 q.contiguous(), k.contiguous(), v.contiguous(), dropout_p=0.0, causal=False
             )
 

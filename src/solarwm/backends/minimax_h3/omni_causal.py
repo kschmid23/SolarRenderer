@@ -96,20 +96,35 @@ def _merge(spans: list[tuple[int, int]]) -> tuple[tuple[int, int], ...]:
     return tuple((a, b) for a, b in out)
 
 
+def sdpa_attn_func(q: Any, k: Any, v: Any, dropout_p: float = 0.0, causal: bool = False) -> Any:
+    """``flash_attn_func``'s signature and layout (``[B, S, H, D]``) through PyTorch's scaled_dot_product_attention."""
+
+    import torch
+
+    out = torch.nn.functional.scaled_dot_product_attention(
+        q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), dropout_p=dropout_p, is_causal=causal
+    )
+    return out.transpose(1, 2)
+
+
+def select_attn_func(device_type: str) -> Any:
+    """flash-attn on CUDA when it is installed; otherwise PyTorch attention (CPU tests, a GPU without a flash-attn build)."""
+
+    if device_type == "cuda":
+        try:
+            from flash_attn import flash_attn_func
+        except ImportError:
+            return sdpa_attn_func
+        return flash_attn_func
+    return sdpa_attn_func
+
+
 def segment_attention(query: Any, key: Any, value: Any, plan: H3SegmentPlan, layer: int) -> Any:
     """``[B, S, H, D]`` attention over full sequence / local heads (after any Ulysses exchange), segment by segment."""
 
     import torch
 
-    if query.device.type == "cuda":
-        from flash_attn import flash_attn_func
-    else:  # CPU (tests): the same attention through SDPA
-
-        def flash_attn_func(q, k, v, dropout_p=0.0, causal=False):
-            out = torch.nn.functional.scaled_dot_product_attention(
-                q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
-            )
-            return out.transpose(1, 2)
+    flash_attn_func = select_attn_func(query.device.type)
 
     if int(query.shape[1]) != plan.sequence_length:
         raise ValueError(f"segment plan covers {plan.sequence_length} rows, attention got {query.shape[1]}")
